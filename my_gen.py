@@ -373,7 +373,7 @@ layer {
     overlap_threshold: 0.5
     evaluate_difficult_gt: false
   }
-}""" % (self.class_num, self.class_num))
+}""" % (self.class_num, self.class_num, self.class_num))
 
     def ssd_loss(self):
       print(
