@@ -1,11 +1,15 @@
 import argparse
 FLAGS = None
 
+NUM_LAYERS = 6
+MIN_SCALE = 0.06
+MAX_SCALE = 0.95
+
 class Generator():
 
     def __init__(self):
       self.first_prior = True
-      self.anchors = create_ssd_anchors()
+      self.anchors = create_ssd_anchors(NUM_LAYERS, MIN_SCALE, MAX_SCALE)
       self.last = "data"
 
     def header(self, name):
@@ -30,8 +34,8 @@ input_shape {
     top: "label"
     data_param{
         source: "%s"
-        backend: LMDB
-        batch_size: 64
+        backend: LEVELDB
+        batch_size: 48
     }
     transform_param {
         crop_size: %s
@@ -92,8 +96,8 @@ input_shape {
   }
   data_param {
     source: "%s"
-    batch_size: 32
-    backend: LMDB
+    batch_size: 48
+    backend: LEVELDB
   }
   annotated_data_param {
     batch_sampler {
@@ -207,8 +211,8 @@ input_shape {
   }
   data_param {
     source: "%s"
-    batch_size: 8
-    backend: LMDB
+    batch_size: 1
+    backend: LEVELDB
   }
   annotated_data_param {
     batch_sampler {
@@ -290,11 +294,11 @@ layer {
     background_label_id: 0
     nms_param {
       nms_threshold: 0.45
-      top_k: 100
+      top_k: 400
     }
     code_type: CENTER_SIZE
-    keep_top_k: 100
-    confidence_threshold: 0.25
+    keep_top_k: 400
+    confidence_threshold: 0.10
   }
 }""" % (self.class_num, self.class_num))
 
@@ -350,7 +354,7 @@ layer {
       top_k: 400
     }
     code_type: CENTER_SIZE
-    keep_top_k: 200
+    keep_top_k: 400
     confidence_threshold: 0.01
   }
 }
@@ -364,7 +368,7 @@ layer {
     phase: TEST
   }
   detection_evaluate_param {
-    num_classes: 21
+    num_classes: %d
     background_label_id: 0
     overlap_threshold: 0.5
     evaluate_difficult_gt: false
@@ -663,7 +667,7 @@ layer {
            self.mbox_prior(bottom, min_size, None, [2.0])
            self.first_prior = False
        else:
-           self.mbox_prior(bottom, min_size, max_size,[2.0,3.0])
+           self.mbox_prior(bottom, min_size, max_size,[2.0, 3.0])
        self.anchors.pop(0)
 
     def fc(self, name, output):
@@ -733,25 +737,25 @@ layer {
       self.conv_dw_pw("conv8", 512, 512, 1)
       self.conv_dw_pw("conv9", 512, 512, 1)
       self.conv_dw_pw("conv10",512, 512, 1)
-      self.conv_dw_pw("conv11",512, 512, 1)
-      self.conv_dw_pw("conv12",512, 1024, 2) 
-      self.conv_dw_pw("conv13",1024, 1024, 1) 
+      self.conv_dw_pw("conv11_n",512, 512, 1)
+      self.conv_dw_pw("conv12_n",512, 1024, 2)
+      self.conv_dw_pw("conv13_n",1024, 1024, 1)
       if gen_ssd is True:
-          self.conv_bn_relu("conv14_1", 256, 1, 1)
-          self.conv_bn_relu("conv14_2", 512, 3, 2)
-          self.conv_bn_relu("conv15_1", 128, 1, 1)
-          self.conv_bn_relu("conv15_2", 256, 3, 2)
-          self.conv_bn_relu("conv16_1", 128, 1, 1)
-          self.conv_bn_relu("conv16_2", 256, 3, 2)
-          self.conv_bn_relu("conv17_1", 64,  1, 1)
-          self.conv_bn_relu("conv17_2", 128, 3, 2)
-          self.mbox("conv11", 3)
-          self.mbox("conv13", 6)
-          self.mbox("conv14_2", 6)
-          self.mbox("conv15_2", 6)
-          self.mbox("conv16_2", 6)
-          self.mbox("conv17_2", 6)
-          self.concat_boxes(['conv11', 'conv13', 'conv14_2', 'conv15_2', 'conv16_2', 'conv17_2'])
+          self.conv_bn_relu("conv14_1_n", 256, 1, 1)
+          self.conv_bn_relu("conv14_2_n", 512, 3, 2)
+          self.conv_bn_relu("conv15_1_n", 128, 1, 1)
+          self.conv_bn_relu("conv15_2_n", 256, 3, 2)
+          self.conv_bn_relu("conv16_1_n", 128, 1, 1)
+          self.conv_bn_relu("conv16_2_n", 256, 3, 2)
+          self.conv_bn_relu("conv17_1_n", 64,  1, 1)
+          self.conv_bn_relu("conv17_2_n", 128, 3, 2)
+          self.mbox("conv5",3)
+          self.mbox("conv11_n", 6)
+          self.mbox("conv13_n", 6)
+          self.mbox("conv14_2_n", 6)
+          self.mbox("conv15_2_n", 6)
+          self.mbox("conv17_2_n", 6)
+          self.concat_boxes(["conv5", 'conv11_n', 'conv13_n', 'conv14_2_n', 'conv15_2_n', 'conv17_2_n'])
           if stage == "train":
              self.ssd_loss()
           elif stage == "deploy":
@@ -766,7 +770,7 @@ layer {
 
    
 def create_ssd_anchors(num_layers=6,
-                       min_scale=0.2,
+                       min_scale=0.06,
                        max_scale=0.95):
   box_specs_list = []
   scales = [min_scale + (max_scale - min_scale) * i / (num_layers - 1)
@@ -813,3 +817,8 @@ if __name__ == '__main__':
   FLAGS, unparsed = parser.parse_known_args()
   gen = Generator()
   gen.generate(FLAGS.stage, not FLAGS.classifier, FLAGS.size, FLAGS.class_num)
+
+  # generate train file
+  # python my_gen.py --lmdb="trainval_leveldb/" -l="labelmap.prototxt" -c=2 2>&1|tee MobileNetSSD_train_example.prototxt
+  # python my_gen.py -s="test" --lmdb="test_leveldb/" -l="labelmap.prototxt" -c=2 2>&1|tee MobileNetSSD_test_example.prototxt
+  # python my_gen.py -s="deploy" -l="labelmap.prototxt" -c=2 2>&1|tee MobileNetSSD_deploy_example.prototxt
