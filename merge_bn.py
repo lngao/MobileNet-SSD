@@ -21,7 +21,7 @@ def merge_bn(net, nob):
     for key in net.params.iterkeys():
         if type(net.params[key]) is caffe._caffe.BlobVec:
             if key.endswith("/bn") or key.endswith("/scale"):
-		continue
+               continue
             else:
                 conv = net.params[key]
                 if not net.params.has_key(key + "/bn"):

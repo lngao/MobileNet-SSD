@@ -639,7 +639,7 @@ layer {
   prior_box_param {
     min_size: %.1f%s%s
     flip: true
-    clip: false
+    clip: true
     variance: 0.1
     variance: 0.1
     variance: 0.2
